@@ -1,0 +1,7 @@
+# virtualenv folder
+gdrive_downloader_env/
+
+# credentials files
+credentials.json
+credentials.json:Zone.Identifier
+token.pickle
