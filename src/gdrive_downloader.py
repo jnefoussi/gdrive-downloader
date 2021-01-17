@@ -9,8 +9,48 @@ import sys
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
+class FolderInformation():
+    """
+    Google Drive Folder Information Class
+    """
+
+    def __init__(self, id, name):
+        self.id = id
+        self.name = name
+
+
 def main():
 
+    folder_name = ''
+    folder_id = ''
+    location = ''
+    if len(sys.argv) > 2:
+        location = sys.argv[2]
+        if location[-1] != '/':
+            location += '/'
+
+    service = get_gdrive_service()
+
+    folder = service.files().list(
+            q=f"name contains '{sys.argv[1]}' and mimeType='application/vnd.google-apps.folder'",
+            fields='files(id, name, parents)').execute()
+
+    folder_information = get_folder_information(folder, service)
+
+    print(f'{folder_information.id} {folder_information.name}')
+    download_folder(service, folder_information.id, location, folder_information.name)
+
+def get_gdrive_service():
+    """
+    Get Google Drive credentials based on your credentials.json file
+
+    Disclaimer: You need to enable the Drive API to use the script. 
+    The enabling instructions can be found on Python Quickstart.
+
+    https://developers.google.com/drive/api/v3/quickstart/python
+    
+    The credentials.json file will be needed in the working directory.
+    """
     creds = None
     if os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
@@ -23,41 +63,7 @@ def main():
             creds = flow.run_local_server(port=1337)
         with open('token.pickle', 'wb') as token:
             pickle.dump(creds, token, protocol=0)
-    service = build('drive', 'v3', credentials=creds)
-
-    folder_name = ''
-    folder_id = ''
-    location = ''
-    if len(sys.argv) > 2:
-        location = sys.argv[2]
-        if location[-1] != '/':
-            location += '/'
-
-    folder = service.files().list(
-            q=f"name contains '{sys.argv[1]}' and mimeType='application/vnd.google-apps.folder'",
-            fields='files(id, name, parents)').execute()
-
-    total = len(folder['files'])
-    if total != 1:
-        print(f'{total} folders found')
-        if total == 0:
-            sys.exit(1)
-        prompt = 'Please select the folder you want to download:\n\n'
-        for i in range(total):
-            prompt += f'[{i}]: {get_full_path(service, folder["files"][i])}\n'
-        prompt += '\nYour choice: '
-        choice = int(input(prompt))
-        if 0 <= choice and choice < total:
-            folder_id = folder['files'][choice]['id']
-            folder_name = folder['files'][choice]['name']
-        else:
-            sys.exit(1)
-    else:
-        folder_id = folder['files'][0]['id']
-        folder_name = folder['files'][0]['name']
-
-    print(f'{folder_id} {folder_name}')
-    download_folder(service, folder_id, location, folder_name)
+    return build('drive', 'v3', credentials=creds)
 
 def get_full_path(service, folder):
 
@@ -69,6 +75,25 @@ def get_full_path(service, folder):
         files = service.files().get(fileId=files['parents'][0], fields='id, name, parents').execute()
         path = files['name'] + ' > ' + path
     return path
+
+def get_folder_information(folder, service):
+    
+    total = len(folder['files'])
+    if total != 1:
+        print(f'{total} folders found')
+        if total == 0:
+            sys.exit(1)
+        prompt = 'Please select the folder you want to download:\n\n'
+        for i in range(total):
+            prompt += f'[{i}]: {get_full_path(service, folder["files"][i])}\n'
+        prompt += '\nYour choice: '
+        choice = int(input(prompt))
+        if 0 <= choice and choice < total:
+            return FolderInformation(folder['files'][choice]['id'], folder['files'][choice]['name'])
+        else:
+            sys.exit(1)
+    else:
+        return FolderInformation(folder['files'][0]['id'], folder['files'][0]['name'])
 
 def download_folder(service, folder_id, location, folder_name):
 
@@ -110,12 +135,16 @@ def download_folder(service, folder_id, location, folder_name):
 
 def download_file(service, file_id, location, filename, mime_type):
 
+    if '/' in filename:
+        filename = filename.replace('/','-')
+
     if 'vnd.google-apps' in mime_type:
         request = service.files().export_media(fileId=file_id,
                 mimeType='application/pdf')
         filename += '.pdf'
     else:
         request = service.files().get_media(fileId=file_id)
+    
     fh = io.FileIO(location + filename, 'wb')
     downloader = MediaIoBaseDownload(fh, request, 1024 * 1024 * 1024)
     done = False

@@ -5,3 +5,6 @@ gdrive_downloader_env/
 credentials.json
 credentials.json:Zone.Identifier
 token.pickle
+
+# visual studio code configs
+.vscode
